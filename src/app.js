@@ -1,20 +1,22 @@
-const express = require('express');
-const cors = require('cors');
-const morgan = require('morgan');
-const helmet = require('helmet');
-const mongoSanitize = require('express-mongo-sanitize');
-const xss = require('xss-clean');
-const hpp = require('hpp');
-const cookieParser = require('cookie-parser');
+const express = require("express");
+const cors = require("cors");
+const morgan = require("morgan");
+const helmet = require("helmet");
+const mongoSanitize = require("express-mongo-sanitize");
+const xss = require("xss-clean");
+const hpp = require("hpp");
+const cookieParser = require("cookie-parser");
 
-const connectDB = require('./config/db');
-const mainRouter = require('./routes');
-const { authLimiter } = require('./middlewares/rateLimit');
-const errorHandler = require('./middlewares/error');
+const connectDB = require("./config/db");
+const mainRouter = require("./routes");
+const { authLimiter } = require("./middlewares/rateLimit");
+const errorHandler = require("./middlewares/error");
 
-require('dotenv').config();
+require("dotenv").config();
 
 const app = express();
+
+app.set("trust proxy", 1); // Trust first proxy (Render)
 
 // Security middlewares
 app.use(helmet());
@@ -23,19 +25,19 @@ app.use(xss());
 app.use(hpp());
 
 // Body parsers
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
 
 // Dev logging
-if (process.env.NODE_ENV === 'development') {
-  app.use(morgan('dev'));
+if (process.env.NODE_ENV === "development") {
+  app.use(morgan("dev"));
 }
 
 // CORS
-app.use(cors({ origin: process.env.CLIENT_URL || '*' }));
+app.use(cors({ origin: process.env.CLIENT_URL || "*" }));
 
 // Routes
-app.use('/api/v1', mainRouter);
+app.use("/api/v1", mainRouter);
 
 // Error handler
 app.use(errorHandler);
