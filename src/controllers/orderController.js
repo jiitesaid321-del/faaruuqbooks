@@ -4,47 +4,54 @@ const Book = require('../models/Book');
 const { createPaymentSession, verifyPayment } = require('../utils/waafiClient');
 
 exports.createOrder = async (req, res) => {
-  const cart = await Cart.findOne({ user: req.user.id }).populate('items.book');
-  if (!cart || cart.items.length === 0) return res.status(400).json({ error: 'Cart is empty' });
+  try {
+    const cart = await Cart.findOne({ user: req.user.id }).populate('items.book');
+    if (!cart || cart.items.length === 0) return res.status(400).json({ error: 'Cart is empty' });
 
-  const items = cart.items.map(item => ({
-    book: item.book._id,
-    title: item.title,
-    price: item.price,
-    qty: item.qty
-  }));
+    const items = cart.items.map(item => ({
+      book: item.book._id,
+      title: item.title,
+      price: item.price,
+      qty: item.qty
+    }));
 
-  const order = new Order({
-    user: req.user.id,
-    items,
-    amount: cart.total,
-    shippingAddress: req.body.shippingAddress
-  });
+    const order = new Order({
+      user: req.user.id,
+      items,
+      amount: cart.total,
+      shippingAddress: req.body.shippingAddress
+    });
 
-  await order.save();
+    await order.save();
 
-  // Reduce book stock
-  for (let item of cart.items) {
-    await Book.findByIdAndUpdate(item.book._id, { $inc: { stock: -item.qty } });
+    // Reduce book stock
+    for (let item of cart.items) {
+      await Book.findByIdAndUpdate(item.book._id, { $inc: { stock: -item.qty } });
+    }
+
+    // Create Waafi payment
+    const payment = await createPaymentSession({
+      amount: cart.total,
+      orderId: order._id.toString(),
+      customerTel: req.body.shippingAddress.phone
+    });
+
+    order.paymentRef = payment.reference;
+    await order.save();
+
+    // Clear cart
+    await Cart.deleteOne({ user: req.user.id });
+
+    // 👇 RETURN RESPONSE
+    return res.status(201).json({
+      order,
+      paymentUrl: payment.payment_url // or payment.url
+    });
+
+  } catch (error) {
+    console.error("Create Order Error:", error);
+    return res.status(500).json({ error: 'Failed to create order' });
   }
-
-  // Create Waafi payment
-  const payment = await createPaymentSession({
-    amount: cart.total,
-    orderId: order._id.toString(),
-    customerTel: req.body.shippingAddress.phone
-  });
-
-  order.paymentRef = payment.reference;
-  await order.save();
-
-  // Clear cart
-  await Cart.deleteOne({ user: req.user.id });
-
-  res.status(201).json({
-    order,
-    paymentUrl: payment.payment_url
-  });
 };
 
 exports.verifyOrderPayment = async (req, res) => {
@@ -77,8 +84,15 @@ exports.paymentWebhook = async (req, res) => {
 };
 
 exports.getUserOrders = async (req, res) => {
-  const orders = await Order.find({ user: req.user.id }).sort('-createdAt');
-  res.json(orders);
+  try {
+    console.log("🔍 Fetching orders for user:", req.user.id);
+    const orders = await Order.find({ user: req.user.id }).sort('-createdAt');
+    console.log("📦 Found orders:", orders.length);
+    res.json(orders);
+  } catch (error) {
+    console.error("Get Orders Error:", error);
+    res.status(500).json({ error: 'Failed to fetch orders' });
+  }
 };
 
 exports.getOrderById = async (req, res) => {
