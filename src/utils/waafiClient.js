@@ -3,7 +3,6 @@
 const axios = require("axios");
 const { v4: uuidv4 } = require("uuid");
 
-// ✅ TRY MULTIPLE ENDPOINTS UNTIL ONE WORKS
 const WAIFI_ENDPOINTS = [
   "https://api.waafipay.com/asm",
   "https://api.waafipay.com/v1/payments",
@@ -41,40 +40,83 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
       },
     };
 
-    for (let baseUrl of WAIFI_ENDPOINTS) {
-      try {
-        console.log(`🚀 Trying Waafi endpoint: ${baseUrl}`);
-        const { data } = await axios.post(baseUrl, payload, {
-          headers: { "Content-Type": "application/json" },
-          timeout: 10000,
-        });
+    // 👇 TRY PRIMARY ENDPOINT FIRST
+    const primaryEndpoint = WAIFI_ENDPOINTS[0];
+    try {
+      console.log(`🚀 Trying primary Waafi endpoint: ${primaryEndpoint}`);
+      const { data } = await axios.post(primaryEndpoint, payload, {
+        headers: { "Content-Type": "application/json" },
+        timeout: 10000,
+      });
 
-        console.log(`✅ Success with endpoint: ${baseUrl}`);
-        console.log("✅ Waafi response:", data);
+      console.log(`✅ Primary endpoint response:`, data);
 
-        if (data.responseCode === "2001" && data.params?.state === "APPROVED") {
-          return {
-            referenceId: data.params.referenceId,
-            paymentUrl: data.params.paymentUrl,
-            state: "APPROVED",
-            waafiResponse: data,
-          };
-        } else {
-          // 👇 THROW WAIFI ERROR MESSAGE WITH responseMsg
-          const errorMsg =
-            data.responseMsg || `Payment not approved: ${data.responseCode}`;
-          throw new Error(errorMsg);
-        }
-      } catch (error) {
-        console.warn(`⚠️ Endpoint failed: ${baseUrl}`, error.message);
+      // If Waafi returns a business error (like insufficient balance) — throw it immediately
+      if (data.responseCode !== "2001") {
+        const errorMsg =
+          data.responseMsg || `Payment failed: ${data.responseCode}`;
+        throw new Error(errorMsg); // 👈 THROW WAIFI'S MESSAGE
       }
-    }
 
-    throw new Error("All Waafi endpoints failed. Contact Waafi support.");
+      if (!data.params || data.params.state !== "APPROVED") {
+        throw new Error(data.responseMsg || "Payment not approved");
+      }
+
+      return {
+        referenceId: data.params.referenceId,
+        paymentUrl: data.params.paymentUrl,
+        state: "APPROVED",
+        waafiResponse: data,
+      };
+    } catch (primaryError) {
+      console.warn(`⚠️ Primary endpoint failed:`, primaryError.message);
+      // Re-throw Waafi's business error — don't try fallbacks
+      if (
+        primaryError.message.includes("Payment Failed") ||
+        primaryError.message.includes("Haraaga")
+      ) {
+        throw primaryError; // 👈 CRITICAL: Don't swallow Waafi's user-facing error
+      }
+
+      // Only try fallbacks if it's a network/404 error
+      for (let i = 1; i < WAIFI_ENDPOINTS.length; i++) {
+        const baseUrl = WAIFI_ENDPOINTS[i];
+        try {
+          console.log(`🚀 Trying fallback endpoint: ${baseUrl}`);
+          const { data } = await axios.post(baseUrl, payload, {
+            headers: { "Content-Type": "application/json" },
+            timeout: 10000,
+          });
+
+          if (
+            data.responseCode === "2001" &&
+            data.params?.state === "APPROVED"
+          ) {
+            return {
+              referenceId: data.params.referenceId,
+              paymentUrl: data.params.paymentUrl,
+              state: "APPROVED",
+              waafiResponse: data,
+            };
+          } else {
+            throw new Error(
+              data.responseMsg || `Payment not approved: ${data.responseCode}`
+            );
+          }
+        } catch (fallbackError) {
+          console.warn(
+            `⚠️ Fallback endpoint failed: ${baseUrl}`,
+            fallbackError.message
+          );
+          // Continue to next
+        }
+      }
+
+      throw new Error("All Waafi endpoints failed. Contact Waafi support.");
+    }
   } catch (error) {
     console.error("❌ Waafi payment failed:", error.message);
-    // 👇 RE-THROW WITH ORIGINAL MESSAGE
-    throw new Error(error.message);
+    throw new Error(error.message); // 👈 PRESERVE ORIGINAL ERROR MESSAGE
   }
 }
 
