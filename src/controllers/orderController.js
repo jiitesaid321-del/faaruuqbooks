@@ -188,35 +188,37 @@ exports.getOrderById = async (req, res) => {
 
 exports.getAllOrders = async (req, res) => {
   try {
-    // 👇 GET QUERY PARAMETERS
     const { status, email, page = 1, limit = 10 } = req.query;
-
-    // 👇 BUILD FILTER
-    const filter = {};
-
-    if (status) {
-      filter.status = status;
-    }
-
-    if (email) {
-      filter['user.email'] = { $regex: email, $options: 'i' };
-    }
-
-    // 👇 CALCULATE SKIP
     const skip = (page - 1) * limit;
 
-    // 👇 FETCH ORDERS
-    const orders = await Order.find(filter)
-      .populate('user', 'name email')
-      .sort('-createdAt')
-      .skip(skip)
-      .limit(parseInt(limit));
+    // 👇 START WITH BASE QUERY
+    let query = Order.find();
 
-    // 👇 GET TOTAL COUNT FOR PAGINATION
-    const total = await Order.countDocuments(filter);
+    // 👇 APPLY STATUS FILTER
+    if (status) {
+      query = query.where('status', status);
+    }
+
+    // 👇 POPULATE USER FIRST
+    query = query.populate('user', 'name email');
+
+    // 👇 EXECUTE QUERY TO GET POPULATED ORDERS
+    const allOrders = await query.sort('-createdAt');
+
+    // 👇 NOW FILTER BY EMAIL (AFTER POPULATION)
+    let filteredOrders = allOrders;
+    if (email) {
+      filteredOrders = allOrders.filter(order => 
+        order.user?.email?.toLowerCase().includes(email.toLowerCase())
+      );
+    }
+
+    // 👇 APPLY PAGINATION
+    const total = filteredOrders.length;
+    const paginatedOrders = filteredOrders.slice(skip, skip + parseInt(limit));
 
     return res.json({
-      orders,
+      orders: paginatedOrders,
       pagination: {
         total,
         page: parseInt(page),
@@ -230,7 +232,6 @@ exports.getAllOrders = async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch orders' });
   }
 };
-
 exports.updateOrderStatus = async (req, res) => {
   try {
     const { status } = req.body;
