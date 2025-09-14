@@ -162,3 +162,41 @@ exports.getOrderById = async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch order' });
   }
 };
+
+// 👇 ADD THESE TWO FUNCTIONS
+
+exports.getAllOrders = async (req, res) => {
+  try {
+    const orders = await Order.find()
+      .populate('user', 'name email')
+      .sort('-createdAt');
+    res.json(orders);
+  } catch (error) {
+    console.error("Get All Orders Error:", error);
+    res.status(500).json({ error: 'Failed to fetch orders' });
+  }
+};
+
+exports.updateOrderStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!status) {
+      return res.status(400).json({ error: 'Status is required' });
+    }
+
+    const order = await Order.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true }
+    );
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    res.json(order);
+  } catch (error) {
+    console.error("Update Order Status Error:", error);
+    res.status(500).json({ error: 'Failed to update order status' });
+  }
+};
