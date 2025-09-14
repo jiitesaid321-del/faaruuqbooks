@@ -71,16 +71,33 @@ exports.initiatePayment = async (req, res) => {
       return res.status(400).json({ error: "Cart not found. Recreate order." });
     }
 
+    // 👇 CREATE PAYMENT SESSION
     const payment = await createPaymentSession({
       amount: order.amount,
       orderId: order._id.toString(),
       customerTel: order.shippingAddress.phone,
     });
 
+    // 👇 CHECK IF WAIFI APPROVED PAYMENT
+    const approved =
+      payment.waafiResponse.responseCode === "2001" &&
+      payment.waafiResponse.params?.state === "APPROVED";
+
+    if (!approved) {
+      // 👇 RETURN WAIFI'S EXACT ERROR MESSAGE
+      return res.status(400).json({
+        success: false,
+        error: payment.waafiResponse.responseMsg || "Payment not approved",
+        waafiResponse: payment.waafiResponse,
+      });
+    }
+
+    // 👇 SAVE PAYMENT REFERENCE
     order.paymentRef = payment.referenceId;
     order.status = "pending";
     await order.save();
 
+    // 👇 RETURN SUCCESS + PAYMENT URL
     return res.json({
       success: true,
       paymentUrl: payment.paymentUrl,
@@ -89,10 +106,9 @@ exports.initiatePayment = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Payment initiation failed:", error.message);
-    // 👇 RETURN THE EXACT WAIFI ERROR MESSAGE
-    return res.status(400).json({
+    return res.status(500).json({
       success: false,
-      error: error.message, // ← This is "Payment Failed (Haraaga...)"
+      error: error.message,
     });
   }
 };
