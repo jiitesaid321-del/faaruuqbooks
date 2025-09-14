@@ -1,56 +1,19 @@
+// src/controllers/orderController.js
+
 const Order = require("../models/Order");
 const Cart = require("../models/Cart");
 const Book = require("../models/Book");
 const { createPaymentSession } = require("../utils/waafiClient");
 
-// 🚀 INITIATE PAYMENT FIRST (NO ORDER CREATED)
-exports.initiatePayment = async (req, res) => {
+// 1. CREATE ORDER (NO PAYMENT)
+exports.createOrder = async (req, res) => {
+  let order = null;
+  let cart = null;
+
   try {
-    const cart = await Cart.findOne({ user: req.user.id }).populate("items.book");
+    cart = await Cart.findOne({ user: req.user.id }).populate("items.book");
     if (!cart || cart.items.length === 0) {
       return res.status(400).json({ error: "Cart is empty" });
-    }
-
-    const total = cart.items.reduce((sum, item) => sum + (item.price * item.qty), 0);
-
-    const payment = await createPaymentSession({
-      amount: total,
-      orderId: "temp_" + Date.now(),
-      customerTel: req.body.shippingAddress.phone.replace(/\+/g, ""),
-    });
-
-    return res.json({
-      success: true,
-      paymentUrl: payment.paymentUrl,
-      tempPaymentRef: payment.referenceId,
-      amount: total,
-      shippingAddress: req.body.shippingAddress
-    });
-
-  } catch (error) {
-    console.error("❌ Payment initiation failed:", error.message);
-    return res.status(400).json({
-      success: false,
-      error: error.message
-    });
-  }
-};
-
-// 🚀 CREATE ORDER ONLY AFTER WAIFI APPROVES (via webhook)
-exports.paymentWebhook = async (req, res) => {
-  try {
-    const { referenceId, state } = req.body;
-
-    if (!referenceId || state !== "APPROVED") {
-      return res.status(400).json({ error: "Payment not approved" });
-    }
-
-    // 👇 REPLACE WITH REAL USER ID (store in DB when initiating payment)
-    const userId = "68c039c89a0a80813934de7d";
-
-    const cart = await Cart.findOne({ user: userId }).populate("items.book");
-    if (!cart) {
-      return res.status(400).json({ error: "Cart not found" });
     }
 
     const items = cart.items.map((item) => ({
@@ -60,40 +23,127 @@ exports.paymentWebhook = async (req, res) => {
       qty: item.qty,
     }));
 
-    const order = new Order({
-      user: userId,
+    order = new Order({
+      user: req.user.id,
       items,
       amount: cart.total,
       currency: "USD",
-      status: "paid",
+      status: "created", // ← NOT "pending" — payment not started
       gateway: "waafi",
-      paymentRef: referenceId,
-      shippingAddress: req.body.shippingAddress || { /* default */ }
+      shippingAddress: req.body.shippingAddress,
     });
 
     await order.save();
+    console.log("✅ Order created:", order._id);
 
-    for (let item of cart.items) {
-      await Book.findByIdAndUpdate(item.book._id, {
-        $inc: { stock: -item.qty },
-      });
+    // DO NOT reduce stock yet — wait for payment
+    // DO NOT clear cart yet — wait for payment
+
+    return res.status(201).json({
+      success: true,
+      orderId: order._id,
+      amount: order.amount,
+      message: "Order created. Proceed to payment.",
+    });
+  } catch (error) {
+    console.error("❌ Order creation failed:", error.message);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to create order",
+    });
+  }
+};
+
+// 2. INITIATE PAYMENT FOR ORDER
+// src/controllers/orderController.js
+
+exports.initiatePayment = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+
+    const order = await Order.findOne({ _id: orderId, user: req.user.id });
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
     }
 
-    await Cart.deleteOne({ user: userId });
+    const cart = await Cart.findOne({ user: req.user.id });
+    if (!cart) {
+      return res.status(400).json({ error: "Cart not found. Recreate order." });
+    }
+
+    const payment = await createPaymentSession({
+      amount: order.amount,
+      orderId: order._id.toString(),
+      customerTel: order.shippingAddress.phone,
+    });
+
+    order.paymentRef = payment.referenceId;
+    order.status = "pending";
+    await order.save();
+
+    return res.json({
+      success: true,
+      paymentUrl: payment.paymentUrl,
+      paymentRef: payment.referenceId,
+      waafiResponse: payment.waafiResponse,
+    });
+  } catch (error) {
+    console.error("❌ Payment initiation failed:", error.message);
+    // 👇 RETURN THE EXACT WAIFI ERROR MESSAGE
+    return res.status(400).json({
+      success: false,
+      error: error.message, // ← This is "Payment Failed (Haraaga...)"
+    });
+  }
+};
+
+// 3. WEBHOOK — UPDATE ORDER ON PAYMENT SUCCESS
+exports.paymentWebhook = async (req, res) => {
+  try {
+    const { referenceId, state } = req.body;
+
+    if (!referenceId) {
+      return res.status(400).json({ error: "Missing referenceId" });
+    }
+
+    const order = await Order.findOne({ paymentRef: referenceId });
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    if (state === "APPROVED") {
+      // ✅ PAYMENT SUCCESS → reduce stock & clear cart
+      const cart = await Cart.findOne({ user: order.user });
+      if (cart) {
+        for (let item of cart.items) {
+          await Book.findByIdAndUpdate(item.book._id, {
+            $inc: { stock: -item.qty },
+          });
+        }
+        await Cart.deleteOne({ user: order.user });
+      }
+
+      order.status = "paid";
+    } else {
+      order.status = "failed";
+    }
+
+    await order.save();
 
     return res.status(200).json({
       success: true,
-      message: "Order created successfully",
+      message: "Order status updated",
       orderId: order._id,
+      status: order.status,
     });
-
   } catch (error) {
     console.error("❌ Webhook error:", error.message);
     return res.status(500).json({ error: "Webhook processing failed" });
   }
 };
 
-// 👇 KEEP OTHER EXPORTS
+// ... keep other exports (getUserOrders, etc.)
+
 exports.getUserOrders = async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user.id }).sort("-createdAt");
@@ -106,7 +156,10 @@ exports.getUserOrders = async (req, res) => {
 
 exports.getOrderById = async (req, res) => {
   try {
-    const order = await Order.findOne({ _id: req.params.id, user: req.user.id });
+    const order = await Order.findOne({
+      _id: req.params.id,
+      user: req.user.id,
+    });
     if (!order) return res.status(404).json({ error: "Order not found" });
     res.json(order);
   } catch (error) {
