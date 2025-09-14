@@ -191,31 +191,26 @@ exports.getAllOrders = async (req, res) => {
     const { status, email, page = 1, limit = 10 } = req.query;
     const skip = (page - 1) * limit;
 
-    // 👇 START WITH BASE QUERY
-    let query = Order.find();
+    // 👇 STEP 1: GET ALL ORDERS + POPULATE USER
+    let orders = await Order.find()
+      .populate("user", "name email")
+      .sort("-createdAt");
 
-    // 👇 APPLY STATUS FILTER
+    // 👇 STEP 2: FILTER BY STATUS (SERVER-SIDE — EFFICIENT)
     if (status) {
-      query = query.where('status', status);
+      orders = orders.filter((order) => order.status === status);
     }
 
-    // 👇 POPULATE USER FIRST
-    query = query.populate('user', 'name email');
-
-    // 👇 EXECUTE QUERY TO GET POPULATED ORDERS
-    const allOrders = await query.sort('-createdAt');
-
-    // 👇 NOW FILTER BY EMAIL (AFTER POPULATION)
-    let filteredOrders = allOrders;
+    // 👇 STEP 3: FILTER BY EMAIL (CLIENT-SIDE — AFTER POPULATION)
     if (email) {
-      filteredOrders = allOrders.filter(order => 
+      orders = orders.filter((order) =>
         order.user?.email?.toLowerCase().includes(email.toLowerCase())
       );
     }
 
-    // 👇 APPLY PAGINATION
-    const total = filteredOrders.length;
-    const paginatedOrders = filteredOrders.slice(skip, skip + parseInt(limit));
+    // 👇 STEP 4: APPLY PAGINATION
+    const total = orders.length;
+    const paginatedOrders = orders.slice(skip, skip + parseInt(limit));
 
     return res.json({
       orders: paginatedOrders,
@@ -223,13 +218,12 @@ exports.getAllOrders = async (req, res) => {
         total,
         page: parseInt(page),
         pages: Math.ceil(total / limit),
-        limit: parseInt(limit)
-      }
+        limit: parseInt(limit),
+      },
     });
-
   } catch (error) {
     console.error("Get All Orders Error:", error);
-    res.status(500).json({ error: 'Failed to fetch orders' });
+    res.status(500).json({ error: "Failed to fetch orders" });
   }
 };
 exports.updateOrderStatus = async (req, res) => {
