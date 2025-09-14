@@ -184,15 +184,50 @@ exports.getOrderById = async (req, res) => {
   }
 };
 
+// src/controllers/orderController.js
+
 exports.getAllOrders = async (req, res) => {
   try {
-    const orders = await Order.find()
-      .populate("user", "name email")
-      .sort("-createdAt");
-    res.json(orders);
+    // 👇 GET QUERY PARAMETERS
+    const { status, email, page = 1, limit = 10 } = req.query;
+
+    // 👇 BUILD FILTER
+    const filter = {};
+
+    if (status) {
+      filter.status = status;
+    }
+
+    if (email) {
+      filter['user.email'] = { $regex: email, $options: 'i' };
+    }
+
+    // 👇 CALCULATE SKIP
+    const skip = (page - 1) * limit;
+
+    // 👇 FETCH ORDERS
+    const orders = await Order.find(filter)
+      .populate('user', 'name email')
+      .sort('-createdAt')
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    // 👇 GET TOTAL COUNT FOR PAGINATION
+    const total = await Order.countDocuments(filter);
+
+    return res.json({
+      orders,
+      pagination: {
+        total,
+        page: parseInt(page),
+        pages: Math.ceil(total / limit),
+        limit: parseInt(limit)
+      }
+    });
+
   } catch (error) {
     console.error("Get All Orders Error:", error);
-    res.status(500).json({ error: "Failed to fetch orders" });
+    res.status(500).json({ error: 'Failed to fetch orders' });
   }
 };
 
