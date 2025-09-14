@@ -1,7 +1,21 @@
+// src/utils/waafiClient.js
+
+const axios = require("axios");
+const { v4: uuidv4 } = require("uuid");
+
+// ✅ TRY MULTIPLE ENDPOINTS UNTIL ONE WORKS
+const WAIFI_ENDPOINTS = [
+  "https://api.waafipay.com/asm",
+  "https://api.waafipay.com/v1/payments",
+  "https://api.waafipay.com/gateway",
+  "https://api.waafipay.com/api",
+  "https://gateway.waafipay.com/asm",
+];
+
 async function createPaymentSession({ amount, orderId, customerTel }) {
   try {
     const formattedAmount = Number(amount).toFixed(2);
-    const cleanPhone = customerTel.replace(/\+/g, '');
+    const cleanPhone = customerTel.replace(/\+/g, "");
 
     const payload = {
       schemaVersion: "1.0",
@@ -15,7 +29,7 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
         apiKey: process.env.WAAFI_API_KEY,
         paymentMethod: "MWALLET_ACCOUNT",
         payerInfo: {
-          accountNo: cleanPhone
+          accountNo: cleanPhone,
         },
         transactionInfo: {
           referenceId: `ref-${Date.now()}`,
@@ -31,8 +45,8 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
       try {
         console.log(`🚀 Trying Waafi endpoint: ${baseUrl}`);
         const { data } = await axios.post(baseUrl, payload, {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 10000
+          headers: { "Content-Type": "application/json" },
+          timeout: 10000,
         });
 
         console.log(`✅ Success with endpoint: ${baseUrl}`);
@@ -43,11 +57,15 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
             referenceId: data.params.referenceId,
             paymentUrl: data.params.paymentUrl,
             state: "APPROVED",
-            waafiResponse: data
+            waafiResponse: data,
           };
         } else {
           // 👇 THROW WAIFI ERROR MESSAGE
-          throw new Error(`Payment not approved: ${data.responseCode} - ${data.responseMsg || 'Unknown error'}`);
+          throw new Error(
+            `Payment not approved: ${data.responseCode} - ${
+              data.responseMsg || "Unknown error"
+            }`
+          );
         }
       } catch (error) {
         console.warn(`⚠️ Endpoint failed: ${baseUrl}`, error.message);
@@ -55,10 +73,11 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
     }
 
     throw new Error("All Waafi endpoints failed. Contact Waafi support.");
-
   } catch (error) {
     console.error("❌ Waafi payment failed:", error.message);
     // 👇 RE-THROW WITH MESSAGE
     throw new Error(error.message);
   }
 }
+
+module.exports = { createPaymentSession };
