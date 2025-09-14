@@ -1,3 +1,16 @@
+// src/utils/waafiClient.js
+
+const axios = require("axios");
+const { v4: uuidv4 } = require("uuid");
+
+const WAIFI_ENDPOINTS = [
+  "https://api.waafipay.com/asm",
+  "https://api.waafipay.com/v1/payments",
+  "https://api.waafipay.com/gateway",
+  "https://api.waafipay.com/api",
+  "https://gateway.waafipay.com/asm",
+];
+
 async function createPaymentSession({ amount, orderId, customerTel }) {
   try {
     const formattedAmount = Number(amount).toFixed(2);
@@ -52,3 +65,5 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
     throw new Error("Waafi service unavailable. Please try again later.");
   }
 }
+
+module.exports = { createPaymentSession };
