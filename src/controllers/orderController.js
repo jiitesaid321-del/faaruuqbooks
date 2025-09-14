@@ -185,35 +185,39 @@ exports.getOrderById = async (req, res) => {
 };
 
 // src/controllers/orderController.js
+// src/controllers/orderController.js
 
 exports.getAllOrders = async (req, res) => {
   try {
+    // 👇 GET QUERY PARAMETERS
     const { status, email, page = 1, limit = 10 } = req.query;
+
+    // 👇 BUILD FILTER
+    const filter = {};
+
+    if (status) {
+      filter.status = status;
+    }
+
+    if (email) {
+      filter["user.email"] = { $regex: email, $options: "i" };
+    }
+
+    // 👇 CALCULATE SKIP
     const skip = (page - 1) * limit;
 
-    // 👇 STEP 1: GET ALL ORDERS + POPULATE USER
-    let orders = await Order.find()
+    // 👇 FETCH ORDERS
+    const orders = await Order.find(filter)
       .populate("user", "name email")
-      .sort("-createdAt");
+      .sort("-createdAt")
+      .skip(skip)
+      .limit(parseInt(limit));
 
-    // 👇 STEP 2: FILTER BY STATUS (SERVER-SIDE — EFFICIENT)
-    if (status) {
-      orders = orders.filter((order) => order.status === status);
-    }
-
-    // 👇 STEP 3: FILTER BY EMAIL (CLIENT-SIDE — AFTER POPULATION)
-    if (email) {
-      orders = orders.filter((order) =>
-        order.user?.email?.toLowerCase().includes(email.toLowerCase())
-      );
-    }
-
-    // 👇 STEP 4: APPLY PAGINATION
-    const total = orders.length;
-    const paginatedOrders = orders.slice(skip, skip + parseInt(limit));
+    // 👇 GET TOTAL COUNT FOR PAGINATION
+    const total = await Order.countDocuments(filter);
 
     return res.json({
-      orders: paginatedOrders,
+      orders,
       pagination: {
         total,
         page: parseInt(page),
