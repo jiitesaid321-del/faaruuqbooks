@@ -60,7 +60,6 @@ exports.createOrder = async (req, res) => {
 exports.initiatePayment = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { returnUrl, cancelUrl } = req.body; // ← ADD THIS
 
     const order = await Order.findOne({ _id: orderId, user: req.user.id });
     if (!order) {
@@ -72,41 +71,52 @@ exports.initiatePayment = async (req, res) => {
       return res.status(400).json({ error: "Cart not found. Recreate order." });
     }
 
+    // 👇 CREATE PAYMENT SESSION
     const payment = await createPaymentSession({
       amount: order.amount,
       orderId: order._id.toString(),
-      customerTel: order.shippingAddress.phone,
-      returnUrl, // ← PASS TO WAIFI
-      cancelUrl, // ← PASS TO WAIFI
+      customerTel: order.shippingAddress.phone
     });
 
-    const approved =
-      payment.waafiResponse.responseCode === "2001" &&
+    // 👇 CHECK IF WAIFI APPROVED PAYMENT
+    const approved = 
+      payment.waafiResponse.responseCode === "2001" && 
       payment.waafiResponse.params?.state === "APPROVED";
 
     if (!approved) {
       return res.status(400).json({
         success: false,
         error: payment.waafiResponse.responseMsg || "Payment not approved",
-        waafiResponse: payment.waafiResponse,
+        waafiResponse: payment.waafiResponse
       });
     }
 
+    // 👇 UPDATE ORDER TO "PAID" IMMEDIATELY
     order.paymentRef = payment.referenceId;
-    order.status = "pending";
+    order.status = "paid"; // ← UPDATE STATUS HERE
     await order.save();
 
+    // 👇 REDUCE STOCK & CLEAR CART
+    for (let item of cart.items) {
+      await Book.findByIdAndUpdate(item.book._id, {
+        $inc: { stock: -item.qty }
+      });
+    }
+    await Cart.deleteOne({ user: req.user.id });
+
+    // 👇 RETURN SUCCESS + ORDER ID
     return res.json({
       success: true,
-      paymentUrl: payment.paymentUrl,
-      paymentRef: payment.referenceId,
-      waafiResponse: payment.waafiResponse,
+      orderId: order._id,
+      message: "Payment successful. Order confirmed.",
+      waafiResponse: payment.waafiResponse
     });
+
   } catch (error) {
     console.error("❌ Payment initiation failed:", error.message);
     return res.status(500).json({
       success: false,
-      error: error.message,
+      error: error.message
     });
   }
 };
