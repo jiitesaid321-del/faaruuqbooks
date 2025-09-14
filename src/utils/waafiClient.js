@@ -1,5 +1,3 @@
-// src/utils/waafiClient.js
-
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 
@@ -40,7 +38,6 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
       },
     };
 
-    // 👇 TRY PRIMARY ENDPOINT FIRST
     const primaryEndpoint = WAIFI_ENDPOINTS[0];
     try {
       console.log(`🚀 Trying primary Waafi endpoint: ${primaryEndpoint}`);
@@ -51,10 +48,9 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
 
       console.log(`✅ Primary endpoint response:`, data);
 
-      // If Waafi returns a business error (like insufficient balance) — throw it immediately
       if (data.responseCode !== "2001") {
         const errorMsg = data.responseMsg || `Payment failed: ${data.responseCode}`;
-        throw new Error(errorMsg); // 👈 THROW WAIFI'S MESSAGE
+        throw new Error(errorMsg);
       }
 
       if (!data.params || data.params.state !== "APPROVED") {
@@ -70,12 +66,10 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
 
     } catch (primaryError) {
       console.warn(`⚠️ Primary endpoint failed:`, primaryError.message);
-      // Re-throw Waafi's business error — don't try fallbacks
       if (primaryError.message.includes("Payment Failed") || primaryError.message.includes("Haraaga")) {
-        throw primaryError; // 👈 CRITICAL: Don't swallow Waafi's user-facing error
+        throw primaryError;
       }
 
-      // Only try fallbacks if it's a network/404 error
       for (let i = 1; i < WAIFI_ENDPOINTS.length; i++) {
         const baseUrl = WAIFI_ENDPOINTS[i];
         try {
@@ -97,7 +91,6 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
           }
         } catch (fallbackError) {
           console.warn(`⚠️ Fallback endpoint failed: ${baseUrl}`, fallbackError.message);
-          // Continue to next
         }
       }
 
@@ -106,7 +99,7 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
 
   } catch (error) {
     console.error("❌ Waafi payment failed:", error.message);
-    throw new Error(error.message); // 👈 PRESERVE ORIGINAL ERROR MESSAGE
+    throw new Error(error.message);
   }
 }
 

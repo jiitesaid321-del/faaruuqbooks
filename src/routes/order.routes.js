@@ -1,5 +1,3 @@
-// src/routes/order.routes.js
-
 const express = require('express');
 const controller = require('../controllers/orderController');
 const { auth } = require('../middlewares/auth');
@@ -8,17 +6,19 @@ const router = express.Router();
 
 router.use(auth());
 
-// 1. Create order (no payment)
-router.post('/', controller.createOrder);
+// 🚀 INITIATE PAYMENT (NO ORDER CREATED)
+router.post('/initiate-payment', controller.initiatePayment);
 
-// 2. Initiate payment for order
-router.post('/:orderId/pay', controller.initiatePayment);
-
-// 3. Webhook (public)
+// 🚀 WAIFI WEBHOOK (CREATE ORDER AFTER PAYMENT)
 router.post('/webhook', controller.paymentWebhook);
 
-// 4. Get orders
+// 👇 KEEP OTHER ROUTES
 router.get('/my', controller.getUserOrders);
 router.get('/:id', controller.getOrderById);
+
+// Admin routes
+router.use(requireRoles('admin'));
+router.get('/', controller.getAllOrders);
+router.put('/:id/status', controller.updateOrderStatus);
 
 module.exports = router;
