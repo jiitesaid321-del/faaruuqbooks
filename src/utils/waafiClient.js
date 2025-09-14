@@ -1,22 +1,19 @@
+// src/utils/waafiClient.js
+
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 
-const waafi = axios.create({
-  baseURL: process.env.WAAFI_BASE_URL,
-  timeout: 15000,
-  maxRedirects: 5,
-  headers: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json'
-  }
-});
+// ✅ TRY MULTIPLE ENDPOINTS UNTIL ONE WORKS
+const WAIFI_ENDPOINTS = [
+  'https://api.waafipay.com/asm',
+  'https://api.waafipay.com/v1/payments',
+  'https://api.waafipay.com/gateway',
+  'https://api.waafipay.com/api',
+  'https://gateway.waafipay.com/asm'
+];
 
 async function createPaymentSession({ amount, orderId, customerTel }) {
   try {
-    if (!amount || !orderId || !customerTel) {
-      throw new Error("Missing required payment parameters");
-    }
-
     const formattedAmount = Number(amount).toFixed(2);
     const cleanPhone = customerTel.replace(/\+/g, '');
 
@@ -44,54 +41,40 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
       },
     };
 
-    console.log("🚀 [WAIFI] Sending payment request:", JSON.stringify(payload, null, 2));
+    // ✅ TRY EACH ENDPOINT
+    for (let baseUrl of WAIFI_ENDPOINTS) {
+      try {
+        console.log(`🚀 Trying Waafi endpoint: ${baseUrl}`);
+        const { data } = await axios.post(baseUrl, payload, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 10000
+        });
 
-    const { data } = await waafi.post('/', payload);
+        console.log(`✅ Success with endpoint: ${baseUrl}`);
+        console.log("✅ Waafi response:", data);
 
-    console.log("✅ [WAIFI] Raw response:", JSON.stringify(data, null, 2));
-
-    // Handle Waafi's response structure
-    if (data.responseCode !== "2001") {
-      throw new Error(`Waafi payment failed: ${data.responseMessage || 'Unknown error'}`);
+        if (data.responseCode === "2001" && data.params?.state === "APPROVED") {
+          return {
+            referenceId: data.params.referenceId,
+            paymentUrl: data.params.paymentUrl,
+            state: "APPROVED",
+            waafiResponse: data
+          };
+        } else {
+          throw new Error(`Payment not approved: ${data.responseCode}`);
+        }
+      } catch (error) {
+        console.warn(`⚠️ Endpoint failed: ${baseUrl}`, error.message);
+        // Try next endpoint
+      }
     }
 
-    if (!data.params || data.params.state !== "APPROVED") {
-      throw new Error(`Waafi payment not approved: ${data.params?.state || 'No state'}`);
-    }
-
-    return {
-      referenceId: data.params.referenceId || data.transactionInfo?.referenceId,
-      paymentUrl: data.params.paymentUrl || `https://waafipay.com/pay/${orderId}`,
-      state: "APPROVED",
-      waafiResponse: data // 👈 FULL RESPONSE INCLUDED
-    };
+    throw new Error("All Waafi endpoints failed. Contact Waafi support.");
 
   } catch (error) {
-    console.error("❌ [WAIFI] Payment creation failed:", {
-      message: error.message,
-      response: error.response?.data,
-      status: error.response?.status
-    });
-    throw new Error("Payment service unavailable. Please try again later.");
+    console.error("❌ Waafi payment failed:", error.message);
+    throw new Error("Payment service unavailable");
   }
 }
 
-async function verifyPayment(referenceId) {
-  try {
-    if (!referenceId) {
-      throw new Error("Missing payment reference");
-    }
-
-    // In real Waafi, you'd verify via their API
-    // For now, we'll simulate success
-    return {
-      referenceId,
-      state: "APPROVED"
-    };
-  } catch (error) {
-    console.error("❌ [WAIFI] Payment verification failed:", error.message);
-    throw new Error("Payment verification failed");
-  }
-}
-
-module.exports = { createPaymentSession, verifyPayment };
+module.exports = { createPaymentSession };

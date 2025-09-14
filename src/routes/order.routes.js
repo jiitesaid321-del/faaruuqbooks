@@ -1,42 +1,24 @@
-const express = require("express");
-const controller = require("../controllers/orderController");
-const { auth, requireRoles } = require("../middlewares/auth");
+// src/routes/order.routes.js
+
+const express = require('express');
+const controller = require('../controllers/orderController');
+const { auth } = require('../middlewares/auth');
 
 const router = express.Router();
 
 router.use(auth());
 
-router.post("/", controller.createOrder);
-router.get("/my", controller.getUserOrders);
-router.get("/:id", controller.getOrderById);
+// 1. Create order (no payment)
+router.post('/', controller.createOrder);
 
-// Payment
-router.post("/verify-payment", controller.verifyOrderPayment);
-router.post("/webhook", controller.paymentWebhook);
+// 2. Initiate payment for order
+router.post('/:orderId/pay', controller.initiatePayment);
 
-// Admin
-router.use(requireRoles("admin"));
-router.get("/", controller.getAllOrders);
-router.put("/:id/status", controller.updateOrderStatus);
+// 3. Webhook (public)
+router.post('/webhook', controller.paymentWebhook);
 
-// Test route
-router.post("/test-payment", async (req, res) => {
-  try {
-    const payment = await createPaymentSession({
-      amount: 0.25,
-      orderId: "TEST_" + Date.now(),
-      customerTel: "611680998",
-    });
-    res.status(200).json({
-      success: true,
-      payment,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-});
+// 4. Get orders
+router.get('/my', controller.getUserOrders);
+router.get('/:id', controller.getOrderById);
 
 module.exports = router;
