@@ -1,8 +1,6 @@
-// src/routes/order.routes.js
-
 const express = require("express");
 const controller = require("../controllers/orderController");
-const { auth } = require("../middlewares/auth");
+const { auth, requireRoles } = require("../middlewares/auth"); // ← ADD requireRoles
 
 const router = express.Router();
 
@@ -20,5 +18,10 @@ router.post("/webhook", controller.paymentWebhook);
 // 4. Get orders
 router.get("/my", controller.getUserOrders);
 router.get("/:id", controller.getOrderById);
+
+// Admin routes
+router.use(requireRoles("admin")); // ← Now defined
+router.get("/", controller.getAllOrders);
+router.put("/:id/status", controller.updateOrderStatus);
 
 module.exports = router;
