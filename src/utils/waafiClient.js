@@ -60,12 +60,10 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
             waafiResponse: data,
           };
         } else {
-          // 👇 THROW WAIFI ERROR MESSAGE
-          throw new Error(
-            `Payment not approved: ${data.responseCode} - ${
-              data.responseMsg || "Unknown error"
-            }`
-          );
+          // 👇 THROW WAIFI ERROR MESSAGE WITH responseMsg
+          const errorMsg =
+            data.responseMsg || `Payment not approved: ${data.responseCode}`;
+          throw new Error(errorMsg);
         }
       } catch (error) {
         console.warn(`⚠️ Endpoint failed: ${baseUrl}`, error.message);
@@ -75,7 +73,7 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
     throw new Error("All Waafi endpoints failed. Contact Waafi support.");
   } catch (error) {
     console.error("❌ Waafi payment failed:", error.message);
-    // 👇 RE-THROW WITH MESSAGE
+    // 👇 RE-THROW WITH ORIGINAL MESSAGE
     throw new Error(error.message);
   }
 }

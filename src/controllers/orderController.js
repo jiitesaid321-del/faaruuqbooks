@@ -88,17 +88,10 @@ exports.initiatePayment = async (req, res) => {
   } catch (error) {
     console.error("❌ Payment initiation failed:", error.message);
 
-    // 👇 RETURN WAIFI ERROR MESSAGE TO USER
-    if (error.message.includes("Payment not approved")) {
-      return res.status(400).json({
-        success: false,
-        error: "Waafi payment failed: " + error.message,
-      });
-    }
-
-    return res.status(500).json({
+    // 👇 RETURN WAIFI'S EXACT ERROR MESSAGE TO USER
+    return res.status(400).json({
       success: false,
-      error: "Payment initiation failed",
+      error: error.message, // ← This is Waafi's "Haraaga xisaabtaadu..." message
     });
   }
 };
