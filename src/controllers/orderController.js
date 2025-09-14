@@ -80,15 +80,15 @@ exports.initiatePayment = async (req, res) => {
       cancelUrl, // ← PASS TO WAIFI
     });
 
-    const approved = 
-      payment.waafiResponse.responseCode === "2001" && 
+    const approved =
+      payment.waafiResponse.responseCode === "2001" &&
       payment.waafiResponse.params?.state === "APPROVED";
 
     if (!approved) {
       return res.status(400).json({
         success: false,
         error: payment.waafiResponse.responseMsg || "Payment not approved",
-        waafiResponse: payment.waafiResponse
+        waafiResponse: payment.waafiResponse,
       });
     }
 
@@ -100,14 +100,13 @@ exports.initiatePayment = async (req, res) => {
       success: true,
       paymentUrl: payment.paymentUrl,
       paymentRef: payment.referenceId,
-      waafiResponse: payment.waafiResponse
+      waafiResponse: payment.waafiResponse,
     });
-
   } catch (error) {
     console.error("❌ Payment initiation failed:", error.message);
     return res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
     });
   }
 };
