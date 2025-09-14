@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { v4: uuidv4 } = require('uuid');
 
 const waafi = axios.create({
   baseURL: process.env.WAAFI_BASE_URL,
@@ -20,13 +21,13 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
 
     const payload = {
       schemaVersion: "1.0",
-      requestId: require('uuid').v4(),
+      requestId: uuidv4(),
       timestamp: new Date().toISOString(),
       channelName: "WEB",
       serviceName: "API_PURCHASE",
       serviceParams: {
         merchantUid: process.env.WAAFI_MERCHANT_ID,
-        apiUserId: "1008367",
+        apiUserId: process.env.WAAFI_API_USER_ID,
         apiKey: process.env.WAAFI_API_KEY,
         paymentMethod: "MWALLET_ACCOUNT",
         payerInfo: {
@@ -42,21 +43,27 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
       },
     };
 
-    console.log("🚀 [WAIFI] Creating payment for:", {
-      amount: formattedAmount,
-      orderId,
-      customerTel: cleanPhone
-    });
+    console.log("🚀 [WAIFI] Sending payment request:", payload);
 
     const { data } = await waafi.post('/', payload);
 
-    console.log("✅ [WAIFI] Payment created:", data);
+    console.log("✅ [WAIFI] Payment response:", data);
 
-    if (!data || !data.referenceId) {
-      throw new Error("Waafi returned invalid payment data");
+    // Validate response
+    const approved =
+      data.responseCode === "2001" &&
+      data.params?.state === "APPROVED";
+
+    if (!approved) {
+      throw new Error(`Payment not approved. Response: ${JSON.stringify(data)}`);
     }
 
-    return data;
+    return {
+      referenceId: data.params?.referenceId || data.transactionInfo?.referenceId,
+      paymentUrl: data.params?.paymentUrl || "https://waafipay.com/pay/" + orderId,
+      state: "APPROVED"
+    };
+
   } catch (error) {
     console.error("❌ [WAIFI] Payment creation failed:", {
       message: error.message,
