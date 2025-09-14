@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const waafi = axios.create({
   baseURL: process.env.WAAFI_BASE_URL,
   timeout: 15000,
+  maxRedirects: 5,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
@@ -43,25 +44,26 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
       },
     };
 
-    console.log("🚀 [WAIFI] Sending payment request:", payload);
+    console.log("🚀 [WAIFI] Sending payment request:", JSON.stringify(payload, null, 2));
 
     const { data } = await waafi.post('/', payload);
 
-    console.log("✅ [WAIFI] Payment response:", data);
+    console.log("✅ [WAIFI] Raw response:", JSON.stringify(data, null, 2));
 
-    // Validate response
-    const approved =
-      data.responseCode === "2001" &&
-      data.params?.state === "APPROVED";
+    // Handle Waafi's response structure
+    if (data.responseCode !== "2001") {
+      throw new Error(`Waafi payment failed: ${data.responseMessage || 'Unknown error'}`);
+    }
 
-    if (!approved) {
-      throw new Error(`Payment not approved. Response: ${JSON.stringify(data)}`);
+    if (!data.params || data.params.state !== "APPROVED") {
+      throw new Error(`Waafi payment not approved: ${data.params?.state || 'No state'}`);
     }
 
     return {
-      referenceId: data.params?.referenceId || data.transactionInfo?.referenceId,
-      paymentUrl: data.params?.paymentUrl || "https://waafipay.com/pay/" + orderId,
-      state: "APPROVED"
+      referenceId: data.params.referenceId || data.transactionInfo?.referenceId,
+      paymentUrl: data.params.paymentUrl || `https://waafipay.com/pay/${orderId}`,
+      state: "APPROVED",
+      waafiResponse: data // 👈 FULL RESPONSE INCLUDED
     };
 
   } catch (error) {

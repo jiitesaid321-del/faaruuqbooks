@@ -12,20 +12,20 @@ router.get("/:id", controller.getOrderById);
 
 // Payment
 router.post("/verify-payment", controller.verifyOrderPayment);
-router.post("/webhook", controller.paymentWebhook); // Public route for Waafi
+router.post("/webhook", controller.paymentWebhook);
 
 // Admin
 router.use(requireRoles("admin"));
 router.get("/", controller.getAllOrders);
 router.put("/:id/status", controller.updateOrderStatus);
 
-// Add this BEFORE module.exports
+// Test route
 router.post("/test-payment", async (req, res) => {
   try {
     const payment = await createPaymentSession({
-      amount: 10.0,
+      amount: 0.25,
       orderId: "TEST_" + Date.now(),
-      customerTel: "252611234567", // No + sign
+      customerTel: "611680998",
     });
     res.status(200).json({
       success: true,
