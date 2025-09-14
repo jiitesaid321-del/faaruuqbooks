@@ -60,6 +60,7 @@ exports.createOrder = async (req, res) => {
 exports.initiatePayment = async (req, res) => {
   try {
     const { orderId } = req.params;
+    const { returnUrl, cancelUrl } = req.body; // ← ADD THIS
 
     const order = await Order.findOne({ _id: orderId, user: req.user.id });
     if (!order) {
@@ -71,20 +72,19 @@ exports.initiatePayment = async (req, res) => {
       return res.status(400).json({ error: "Cart not found. Recreate order." });
     }
 
-    // 👇 CREATE PAYMENT SESSION
     const payment = await createPaymentSession({
       amount: order.amount,
       orderId: order._id.toString(),
       customerTel: order.shippingAddress.phone,
+      returnUrl, // ← PASS TO WAIFI
+      cancelUrl, // ← PASS TO WAIFI
     });
 
-    // 👇 CHECK IF WAIFI APPROVED PAYMENT
     const approved =
       payment.waafiResponse.responseCode === "2001" &&
       payment.waafiResponse.params?.state === "APPROVED";
 
     if (!approved) {
-      // 👇 RETURN WAIFI'S EXACT ERROR MESSAGE
       return res.status(400).json({
         success: false,
         error: payment.waafiResponse.responseMsg || "Payment not approved",
@@ -92,12 +92,10 @@ exports.initiatePayment = async (req, res) => {
       });
     }
 
-    // 👇 SAVE PAYMENT REFERENCE
     order.paymentRef = payment.referenceId;
     order.status = "pending";
     await order.save();
 
-    // 👇 RETURN SUCCESS + PAYMENT URL
     return res.json({
       success: true,
       paymentUrl: payment.paymentUrl,

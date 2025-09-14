@@ -11,7 +11,13 @@ const WAIFI_ENDPOINTS = [
   "https://gateway.waafipay.com/asm",
 ];
 
-async function createPaymentSession({ amount, orderId, customerTel }) {
+async function createPaymentSession({
+  amount,
+  orderId,
+  customerTel,
+  returnUrl,
+  cancelUrl,
+}) {
   try {
     const formattedAmount = Number(amount).toFixed(2);
     const cleanPhone = customerTel.replace(/\+/g, "");
@@ -36,11 +42,12 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
           amount: formattedAmount,
           currency: "USD",
           description: `Faaruuq Bookstore Order #${orderId}`,
+          returnUrl: returnUrl || process.env.WAAFI_RETURN_URL, // ← USE RETURN URL
+          cancelUrl: cancelUrl || process.env.WAAFI_CANCEL_URL, // ← USE CANCEL URL
         },
       },
     };
 
-    // 👇 ONLY TRY PRIMARY ENDPOINT
     const baseUrl = "https://api.waafipay.com/asm";
     console.log(`🚀 Sending to Waafi: ${baseUrl}`);
 
@@ -51,14 +58,13 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
 
     console.log("✅ Waafi response:", data);
 
-    // 👇 RETURN RAW RESPONSE — LET CONTROLLER DECIDE
     return {
       referenceId:
         data.params?.referenceId || data.transactionInfo?.referenceId,
       paymentUrl:
         data.params?.paymentUrl || `https://waafipay.com/pay/${orderId}`,
       state: data.params?.state || "UNKNOWN",
-      waafiResponse: data, // 👈 RAW WAIFI RESPONSE
+      waafiResponse: data,
     };
   } catch (error) {
     console.error("❌ Waafi payment failed:", error.message);
