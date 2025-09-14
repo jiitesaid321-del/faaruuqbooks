@@ -1,17 +1,3 @@
-// src/utils/waafiClient.js
-
-const axios = require('axios');
-const { v4: uuidv4 } = require('uuid');
-
-// ✅ TRY MULTIPLE ENDPOINTS UNTIL ONE WORKS
-const WAIFI_ENDPOINTS = [
-  'https://api.waafipay.com/asm',
-  'https://api.waafipay.com/v1/payments',
-  'https://api.waafipay.com/gateway',
-  'https://api.waafipay.com/api',
-  'https://gateway.waafipay.com/asm'
-];
-
 async function createPaymentSession({ amount, orderId, customerTel }) {
   try {
     const formattedAmount = Number(amount).toFixed(2);
@@ -41,7 +27,6 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
       },
     };
 
-    // ✅ TRY EACH ENDPOINT
     for (let baseUrl of WAIFI_ENDPOINTS) {
       try {
         console.log(`🚀 Trying Waafi endpoint: ${baseUrl}`);
@@ -61,11 +46,11 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
             waafiResponse: data
           };
         } else {
-          throw new Error(`Payment not approved: ${data.responseCode}`);
+          // 👇 THROW WAIFI ERROR MESSAGE
+          throw new Error(`Payment not approved: ${data.responseCode} - ${data.responseMsg || 'Unknown error'}`);
         }
       } catch (error) {
         console.warn(`⚠️ Endpoint failed: ${baseUrl}`, error.message);
-        // Try next endpoint
       }
     }
 
@@ -73,8 +58,7 @@ async function createPaymentSession({ amount, orderId, customerTel }) {
 
   } catch (error) {
     console.error("❌ Waafi payment failed:", error.message);
-    throw new Error("Payment service unavailable");
+    // 👇 RE-THROW WITH MESSAGE
+    throw new Error(error.message);
   }
 }
-
-module.exports = { createPaymentSession };

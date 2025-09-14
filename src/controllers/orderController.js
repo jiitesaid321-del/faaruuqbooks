@@ -1,5 +1,3 @@
-
-
 // src/controllers/orderController.js
 
 const Order = require("../models/Order");
@@ -61,29 +59,24 @@ exports.initiatePayment = async (req, res) => {
   try {
     const { orderId } = req.params;
 
-    // Get order
     const order = await Order.findOne({ _id: orderId, user: req.user.id });
     if (!order) {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    // Get cart (still exists because we didn't clear it)
     const cart = await Cart.findOne({ user: req.user.id });
     if (!cart) {
       return res.status(400).json({ error: "Cart not found. Recreate order." });
     }
 
-    // Reduce stock & clear cart ONLY if payment succeeds
-    // For now, just create payment session
     const payment = await createPaymentSession({
       amount: order.amount,
       orderId: order._id.toString(),
       customerTel: order.shippingAddress.phone,
     });
 
-    // Save payment reference
     order.paymentRef = payment.referenceId;
-    order.status = "pending"; // ← Now pending payment
+    order.status = "pending";
     await order.save();
 
     return res.json({
@@ -94,6 +87,15 @@ exports.initiatePayment = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Payment initiation failed:", error.message);
+
+    // 👇 RETURN WAIFI ERROR MESSAGE TO USER
+    if (error.message.includes("Payment not approved")) {
+      return res.status(400).json({
+        success: false,
+        error: "Waafi payment failed: " + error.message,
+      });
+    }
+
     return res.status(500).json({
       success: false,
       error: "Payment initiation failed",
