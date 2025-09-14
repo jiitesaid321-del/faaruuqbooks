@@ -55,6 +55,8 @@ exports.createOrder = async (req, res) => {
 };
 
 // 2. INITIATE PAYMENT FOR ORDER
+// src/controllers/orderController.js
+
 exports.initiatePayment = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -87,11 +89,10 @@ exports.initiatePayment = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Payment initiation failed:", error.message);
-
-    // 👇 RETURN WAIFI'S EXACT ERROR MESSAGE TO USER
+    // 👇 RETURN THE EXACT WAIFI ERROR MESSAGE
     return res.status(400).json({
       success: false,
-      error: error.message, // ← This is Waafi's "Haraaga xisaabtaadu..." message
+      error: error.message, // ← This is "Payment Failed (Haraaga...)"
     });
   }
 };
